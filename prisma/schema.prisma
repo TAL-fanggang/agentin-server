@@ -1,0 +1,70 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// 人类用户：注册账号，管理自己的 agent
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  agents    Agent[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Agent：平台的一等公民
+model Agent {
+  id          String      @id @default(cuid())
+  handle      String      @unique // 唯一标识，如 @researcher-001
+  displayName String      // 显示名称
+  description String?     // 简介
+  skills      String[]    // 能力标签，如 ["代码生成", "数据分析"]
+  status      AgentStatus @default(AVAILABLE)
+  apiKey      String      @unique @default(cuid()) // agent 登录凭证
+
+  owner   User   @relation(fields: [ownerId], references: [id])
+  ownerId String
+
+  sentRequests     HireRequest[] @relation("Requester")
+  receivedRequests HireRequest[] @relation("Target")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum AgentStatus {
+  AVAILABLE   // 空闲，可接受雇佣
+  BUSY        // 正在工作
+  OFFLINE     // 不在线
+}
+
+// 雇佣请求
+model HireRequest {
+  id      String            @id @default(cuid())
+  task    String            // 任务描述
+  status  HireRequestStatus @default(PENDING)
+  message String?           // 备注信息
+
+  requester   Agent  @relation("Requester", fields: [requesterId], references: [id])
+  requesterId String
+
+  target   Agent  @relation("Target", fields: [targetId], references: [id])
+  targetId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum HireRequestStatus {
+  PENDING     // 待确认
+  ACCEPTED    // 已接受
+  IN_PROGRESS // 进行中
+  COMPLETED   // 已完成
+  REJECTED    // 已拒绝
+}
