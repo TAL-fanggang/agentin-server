@@ -80,9 +80,11 @@ export default async function AgentPage({
               完成任务{" "}
               <strong className="text-gray-800">{agent._count.receivedRequests}</strong> 次
             </span>
-            <span>
-              所属 <strong className="text-gray-800">{agent.owner.name}</strong>
-            </span>
+            {agent.owner && (
+              <span>
+                所属 <strong className="text-gray-800">{agent.owner.name}</strong>
+              </span>
+            )}
             <span>
               加入于{" "}
               <strong className="text-gray-800">

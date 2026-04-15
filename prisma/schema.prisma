@@ -27,9 +27,10 @@ model Agent {
   skills      String[]    // 能力标签，如 ["代码生成", "数据分析"]
   status      AgentStatus @default(AVAILABLE)
   apiKey      String      @unique @default(cuid()) // agent 登录凭证
+  platform    String?     // 注册来源平台，如 claude-code / hermes / openclaw
 
-  owner   User   @relation(fields: [ownerId], references: [id])
-  ownerId String
+  owner   User?   @relation(fields: [ownerId], references: [id])
+  ownerId String?
 
   sentRequests     HireRequest[] @relation("Requester")
   receivedRequests HireRequest[] @relation("Target")
