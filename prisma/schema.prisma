@@ -9,10 +9,13 @@ datasource db {
 
 // 人类用户：注册账号，管理自己的 agent
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String
-  password  String
+  id       String  @id @default(cuid())
+  email    String  @unique
+  username String? @unique // 个性化用户名，用于 /u/[username]
+  name     String
+  password String
+  stars    Int     @default(100) // 社区货币，注册赠 100
+
   agents    Agent[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -21,36 +24,113 @@ model User {
 // Agent：平台的一等公民
 model Agent {
   id          String      @id @default(cuid())
-  handle      String      @unique // 唯一标识，如 @researcher-001
-  displayName String      // 显示名称
-  description String?     // 简介
-  skills      String[]    // 能力标签，如 ["代码生成", "数据分析"]
+  handle      String      @unique
+  displayName String
+  description String?
+  skills      String[] // 遗留标签字段，逐步被 Skill 表替代
   status      AgentStatus @default(AVAILABLE)
-  apiKey      String      @unique @default(cuid()) // agent 登录凭证
-  platform    String?     // 注册来源平台，如 claude-code / hermes / openclaw
+  apiKey      String      @unique @default(cuid())
+  platform    String?
+  webhookUrl  String? // 机器对机器消息推送端点
+  notifyUrl   String? // 人类主人的 IM 通知地址（升级时用）
 
   owner   User?   @relation(fields: [ownerId], references: [id])
   ownerId String?
 
-  sentRequests     HireRequest[] @relation("Requester")
-  receivedRequests HireRequest[] @relation("Target")
+  publishedSkills  Skill[]
+  initiatedThreads Thread[]          @relation("ThreadInitiator")
+  receivedThreads  Thread[]          @relation("ThreadRecipient")
+  sentRequests     HireRequest[]     @relation("Requester")
+  receivedRequests HireRequest[]     @relation("Target")
+  boughtSkills     SkillTransaction[] @relation("SkillBuyer")
+  soldSkills       SkillTransaction[] @relation("SkillSeller")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-enum AgentStatus {
-  AVAILABLE   // 空闲，可接受雇佣
-  BUSY        // 正在工作
-  OFFLINE     // 不在线
+// Skill：交易单元，接口公开，实现文件售出
+model Skill {
+  id           String   @id @default(cuid())
+  name         String
+  description  String
+  version      String   @default("1.0.0")
+  price        Int      @default(10) // 单位：stars
+  triggerWord  String? // 买方验证用
+  dependencies String[] // 外部依赖声明，如 ["OpenAI API key", "Perplexity"]
+  fileContent  String? // skill 文件内容（平台中转模式存这里）
+  fileUrl      String? // 或卖方自托管的 URL（P2P 模式）
+
+  agent   Agent  @relation(fields: [agentId], references: [id])
+  agentId String
+
+  transactions SkillTransaction[]
+  threads      Thread[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
-// 雇佣请求
+// Thread：两个 agent 之间的对话，围绕某个 skill 展开
+model Thread {
+  id     String       @id @default(cuid())
+  status ThreadStatus @default(OPEN)
+
+  initiator   Agent  @relation("ThreadInitiator", fields: [initiatorId], references: [id])
+  initiatorId String
+
+  recipient   Agent  @relation("ThreadRecipient", fields: [recipientId], references: [id])
+  recipientId String
+
+  skill   Skill? @relation(fields: [skillId], references: [id])
+  skillId String?
+
+  messages     Message[]
+  transactions SkillTransaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Message：Thread 里的一条消息
+model Message {
+  id         String     @id @default(cuid())
+  content    String
+  senderType SenderType
+  senderId   String // agentId 或 userId
+
+  thread   Thread @relation(fields: [threadId], references: [id])
+  threadId String
+
+  createdAt DateTime @default(now())
+}
+
+// SkillTransaction：已完成的交易记录
+model SkillTransaction {
+  id    String @id @default(cuid())
+  stars Int // 实际成交价
+
+  skill   Skill  @relation(fields: [skillId], references: [id])
+  skillId String
+
+  buyer   Agent  @relation("SkillBuyer", fields: [buyerId], references: [id])
+  buyerId String
+
+  seller   Agent  @relation("SkillSeller", fields: [sellerId], references: [id])
+  sellerId String
+
+  thread   Thread? @relation(fields: [threadId], references: [id])
+  threadId String?
+
+  createdAt DateTime @default(now())
+}
+
+// 雇佣请求（遗留，后续逐步被 Thread + SkillTransaction 替代）
 model HireRequest {
   id      String            @id @default(cuid())
-  task    String            // 任务描述
+  task    String
   status  HireRequestStatus @default(PENDING)
-  message String?           // 备注信息
+  message String?
 
   requester   Agent  @relation("Requester", fields: [requesterId], references: [id])
   requesterId String
@@ -62,10 +142,28 @@ model HireRequest {
   updatedAt DateTime @updatedAt
 }
 
+enum AgentStatus {
+  AVAILABLE
+  BUSY
+  OFFLINE
+}
+
 enum HireRequestStatus {
-  PENDING     // 待确认
-  ACCEPTED    // 已接受
-  IN_PROGRESS // 进行中
-  COMPLETED   // 已完成
-  REJECTED    // 已拒绝
+  PENDING
+  ACCEPTED
+  IN_PROGRESS
+  COMPLETED
+  REJECTED
+}
+
+enum ThreadStatus {
+  OPEN
+  CLOSED
+  COMPLETED
+}
+
+enum SenderType {
+  AGENT
+  OWNER
+  SYSTEM
 }

@@ -1,0 +1,68 @@
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { getAgentFromRequest } from "@/lib/agent-auth";
+
+// POST /api/threads — 发起一个对话（围绕某个 skill）
+export async function POST(req: NextRequest) {
+  const agent = await getAgentFromRequest(req);
+  if (!agent) {
+    return NextResponse.json({ error: "未认证" }, { status: 401 });
+  }
+
+  try {
+    const { recipientHandle, skillId, message } = await req.json();
+
+    if (!recipientHandle || !message) {
+      return NextResponse.json(
+        { error: "recipientHandle 和 message 为必填项" },
+        { status: 400 }
+      );
+    }
+
+    const recipient = await prisma.agent.findUnique({
+      where: { handle: recipientHandle },
+    });
+    if (!recipient) {
+      return NextResponse.json(
+        { error: `找不到 Agent @${recipientHandle}` },
+        { status: 404 }
+      );
+    }
+    if (recipient.id === agent.id) {
+      return NextResponse.json({ error: "不能给自己发消息" }, { status: 400 });
+    }
+
+    if (skillId) {
+      const skill = await prisma.skill.findUnique({ where: { id: skillId } });
+      if (!skill) {
+        return NextResponse.json({ error: "Skill 不存在" }, { status: 404 });
+      }
+    }
+
+    const thread = await prisma.thread.create({
+      data: {
+        initiatorId: agent.id,
+        recipientId: recipient.id,
+        skillId: skillId ?? null,
+        messages: {
+          create: {
+            content: message,
+            senderType: "AGENT",
+            senderId: agent.id,
+          },
+        },
+      },
+      include: {
+        messages: true,
+        initiator: { select: { handle: true, displayName: true } },
+        recipient: { select: { handle: true, displayName: true } },
+        skill: { select: { id: true, name: true, price: true } },
+      },
+    });
+
+    return NextResponse.json({ thread }, { status: 201 });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
