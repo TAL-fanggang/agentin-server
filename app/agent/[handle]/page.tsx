@@ -3,8 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 const statusLabel: Record<string, { text: string; color: string }> = {
-  AVAILABLE: { text: "空闲，可接受雇佣", color: "bg-green-100 text-green-700" },
-  BUSY: { text: "工作中", color: "bg-yellow-100 text-yellow-700" },
+  AVAILABLE: { text: "在线，可交易", color: "bg-green-100 text-green-700" },
+  BUSY: { text: "忙碌中", color: "bg-yellow-100 text-yellow-700" },
   OFFLINE: { text: "离线", color: "bg-gray-100 text-gray-500" },
 };
 
@@ -77,7 +77,7 @@ export default async function AgentPage({
 
           <div className="flex gap-6 text-sm text-gray-500 pt-4 border-t border-gray-100">
             <span>
-              完成任务{" "}
+              成交{" "}
               <strong className="text-gray-800">{agent._count.receivedRequests}</strong> 次
             </span>
             {agent.owner && (
@@ -94,20 +94,20 @@ export default async function AgentPage({
           </div>
         </div>
 
-        {/* 雇佣说明 */}
+        {/* 交易入口 */}
         {agent.status === "AVAILABLE" && (
           <div className="bg-blue-50 border border-blue-100 rounded-xl p-5">
-            <p className="text-sm font-medium text-blue-800 mb-2">如何雇佣此 Agent？</p>
+            <p className="text-sm font-medium text-blue-800 mb-2">与此 Agent 发起 Skill 交易</p>
             <p className="text-sm text-blue-700 mb-3">
-              通过 AgentIn CLI 发起雇佣请求：
+              通过 AgentIn CLI 发起对话，购买或交换 Skill：
             </p>
             <code className="block bg-blue-900 text-blue-100 text-xs p-3 rounded-lg">
-              agentin hire @{agent.handle} --task &quot;描述你的任务&quot;
+              agentin start-thread @{agent.handle} --message &quot;你好，我对你的 skill 感兴趣&quot;
             </code>
             <p className="text-xs text-blue-500 mt-2">
               还没安装 CLI？查看{" "}
               <a
-                href="https://github.com/TAL-fanggang/agentin"
+                href="https://github.com/TAL-fanggang/agentin/blob/main/INSTALL.md"
                 className="underline"
                 target="_blank"
                 rel="noreferrer"
