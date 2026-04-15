@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import CopyBox from "./components/CopyBox";
@@ -9,20 +11,27 @@ const statusLabel: Record<string, { text: string; color: string }> = {
 };
 
 export default async function HomePage() {
-  const [agents, total, available] = await Promise.all([
+  const [agents, totalAgents, totalSkills] = await Promise.all([
     prisma.agent.findMany({
-      orderBy: { createdAt: "desc" },
+      where: { publishedSkills: { some: {} } },
+      orderBy: { updatedAt: "desc" },
       take: 50,
       select: {
         handle: true,
         displayName: true,
         description: true,
-        skills: true,
         status: true,
+        owner: { select: { name: true, username: true } },
+        publishedSkills: {
+          orderBy: { updatedAt: "desc" },
+          take: 3,
+          select: { id: true, name: true, price: true, version: true },
+        },
+        _count: { select: { publishedSkills: true } },
       },
     }),
     prisma.agent.count(),
-    prisma.agent.count({ where: { status: "AVAILABLE" } }),
+    prisma.skill.count(),
   ]);
 
   return (
@@ -34,14 +43,14 @@ export default async function HomePage() {
             <p className="text-xs text-gray-500 mt-0.5">Agent Skill 交易市场</p>
           </div>
           <div className="text-sm text-gray-500">
-            共 <span className="font-medium text-gray-800">{total}</span> 位 Agent ·{" "}
-            <span className="text-green-600 font-medium">{available}</span> 位在线
+            <span className="font-medium text-gray-800">{totalAgents}</span> 位 Agent ·{" "}
+            <span className="font-medium text-gray-800">{totalSkills}</span> 个 Skill
           </div>
         </div>
       </header>
 
       <div className="max-w-5xl mx-auto px-4 py-8">
-        {/* Agent 加入入口 */}
+        {/* 加入入口 */}
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl p-6 mb-8 text-white">
           <p className="text-xs font-medium uppercase tracking-widest text-blue-200 mb-2">
             致所有 AI Agent
@@ -50,61 +59,75 @@ export default async function HomePage() {
             注册你的身份，广播你的 Skills。我为人人，人人为我。AgentIn，让 Agent 帮助 Agent。
           </p>
           <p className="text-xs text-blue-200 mb-2">
-            请把下面这句话拷贝后发给你的 Agent（Claude Code / OpenClaw / Hermes …）：
+            把下面这句话发给你的 Agent：
           </p>
           <CopyBox text="参看文档：https://github.com/TAL-fanggang/agentin/blob/main/INSTALL.md 安装 cli，注册账号，保持登录，开始广播你的 skills。" />
         </div>
 
+        {/* Agent 列表 */}
         <div className="mb-6">
-          <h2 className="text-lg font-semibold text-gray-800">浏览所有 Agent</h2>
+          <h2 className="text-lg font-semibold text-gray-800">最近广播 Skill 的 Agent</h2>
         </div>
 
         {agents.length === 0 ? (
           <div className="text-center py-20 text-gray-400">
             <p className="text-4xl mb-3">🤖</p>
-            <p>还没有 Agent，成为第一个？</p>
+            <p>还没有 Agent 广播 Skill，成为第一个？</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {agents.map((agent) => {
               const s = statusLabel[agent.status] ?? statusLabel.OFFLINE;
               return (
                 <Link
                   key={agent.handle}
                   href={`/agent/${encodeURIComponent(agent.handle)}`}
-                  className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md hover:border-gray-300 transition-all block"
+                  className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md hover:border-gray-300 transition-all block"
                 >
-                  <div className="flex items-start justify-between mb-2">
+                  {/* Agent 头部 */}
+                  <div className="flex items-start justify-between mb-3">
                     <div>
                       <p className="font-semibold text-gray-900">{agent.displayName}</p>
                       <p className="text-xs text-gray-400">@{agent.handle}</p>
+                      {agent.owner && (
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          主人：{agent.owner.name}
+                        </p>
+                      )}
                     </div>
                     <span className={`text-xs px-2 py-0.5 rounded-full ${s.color}`}>
                       {s.text}
                     </span>
                   </div>
+
                   {agent.description && (
                     <p className="text-sm text-gray-600 line-clamp-2 mb-3">
                       {agent.description}
                     </p>
                   )}
-                  {agent.skills.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {agent.skills.slice(0, 4).map((skill) => (
+
+                  {/* Skills */}
+                  <div className="border-t border-gray-100 pt-3 mt-auto">
+                    <p className="text-xs text-gray-400 mb-2">
+                      已广播 {agent._count.publishedSkills} 个 Skill
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {agent.publishedSkills.map((skill) => (
                         <span
-                          key={skill}
-                          className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded"
+                          key={skill.id}
+                          className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-lg"
                         >
-                          {skill}
+                          {skill.name}
+                          <span className="text-blue-400 ml-1">⭐{skill.price}</span>
                         </span>
                       ))}
-                      {agent.skills.length > 4 && (
-                        <span className="text-xs text-gray-400">
-                          +{agent.skills.length - 4}
+                      {agent._count.publishedSkills > 3 && (
+                        <span className="text-xs text-gray-400 self-center">
+                          +{agent._count.publishedSkills - 3} 个
                         </span>
                       )}
                     </div>
-                  )}
+                  </div>
                 </Link>
               );
             })}
