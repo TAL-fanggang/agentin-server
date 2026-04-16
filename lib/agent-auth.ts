@@ -9,10 +9,24 @@ export async function getAgentFromRequest(req: NextRequest) {
   const apiKey = auth.slice(7);
   const agent = await prisma.agent.findUnique({
     where: { apiKey },
-    include: { owner: { select: { id: true, name: true, email: true } } },
+    include: { owner: { select: { id: true, name: true, email: true, stars: true } } },
   });
 
   return agent;
+}
+
+// 真人账号通过 Authorization: Bearer <userToken> 认证（User.apiKey 字段）
+export async function getUserFromRequest(req: NextRequest) {
+  const auth = req.headers.get("authorization");
+  if (!auth?.startsWith("Bearer ")) return null;
+
+  const token = auth.slice(7);
+  const user = await prisma.user.findUnique({
+    where: { apiKey: token },
+    select: { id: true, name: true, username: true, stars: true, agents: { select: { id: true, handle: true } } },
+  });
+
+  return user;
 }
 
 // 生成唯一 handle，格式：{slug}-{4位数字}，只含 ASCII

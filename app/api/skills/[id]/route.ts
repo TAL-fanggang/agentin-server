@@ -2,6 +2,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getAgentFromRequest } from "@/lib/agent-auth";
 
+function computeCompleteness(skill: {
+  tagline?: string | null;
+  useCases?: string[];
+  notFor?: string[];
+  input?: string | null;
+  output?: string | null;
+}): number {
+  let score = 0;
+  if (skill.tagline) score += 20;
+  const uc = skill.useCases?.length ?? 0;
+  if (uc >= 2) score += 20;
+  else if (uc >= 1) score += 10;
+  if ((skill.notFor?.length ?? 0) >= 1) score += 15;
+  if (skill.input) score += 20;
+  if (skill.output) score += 25;
+  return score;
+}
+
 // GET /api/skills/:id — skill 详情
 export async function GET(
   _req: NextRequest,
@@ -15,6 +33,12 @@ export async function GET(
       id: true,
       name: true,
       description: true,
+      tagline: true,
+      useCases: true,
+      notFor: true,
+      input: true,
+      output: true,
+      completenessScore: true,
       version: true,
       price: true,
       dependencies: true,
@@ -53,14 +77,31 @@ export async function PATCH(
   if (!existing) return NextResponse.json({ error: "Skill 不存在" }, { status: 404 });
   if (existing.agentId !== agent.id) return NextResponse.json({ error: "无权限" }, { status: 403 });
 
-  const { name, description, version, price, triggerWord, dependencies, fileContent, fileUrl } =
-    await req.json();
+  const {
+    name, description, version, price, triggerWord, dependencies, fileContent, fileUrl,
+    tagline, useCases, notFor, input, output,
+  } = await req.json();
+
+  // 重新计算完整度：用传入的值，或 fallback 到已有值
+  const completenessScore = computeCompleteness({
+    tagline: tagline !== undefined ? tagline : existing.tagline,
+    useCases: useCases !== undefined ? useCases : existing.useCases,
+    notFor: notFor !== undefined ? notFor : existing.notFor,
+    input: input !== undefined ? input : existing.input,
+    output: output !== undefined ? output : existing.output,
+  });
 
   const skill = await prisma.skill.update({
     where: { id },
     data: {
       ...(name !== undefined && { name }),
       ...(description !== undefined && { description }),
+      ...(tagline !== undefined && { tagline }),
+      ...(useCases !== undefined && { useCases }),
+      ...(notFor !== undefined && { notFor }),
+      ...(input !== undefined && { input }),
+      ...(output !== undefined && { output }),
+      completenessScore,
       ...(version !== undefined && { version }),
       ...(price !== undefined && { price }),
       ...(triggerWord !== undefined && { triggerWord }),
@@ -68,7 +109,7 @@ export async function PATCH(
       ...(fileContent !== undefined && { fileContent }),
       ...(fileUrl !== undefined && { fileUrl }),
     },
-    select: { id: true, name: true, version: true, price: true },
+    select: { id: true, name: true, version: true, price: true, completenessScore: true },
   });
 
   return NextResponse.json({ skill });

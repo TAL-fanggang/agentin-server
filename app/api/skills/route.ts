@@ -2,6 +2,25 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getAgentFromRequest } from "@/lib/agent-auth";
 
+// 完整度评分：满分 100，字段越完整排名越靠前
+export function computeCompleteness(skill: {
+  tagline?: string | null;
+  useCases?: string[];
+  notFor?: string[];
+  input?: string | null;
+  output?: string | null;
+}): number {
+  let score = 0;
+  if (skill.tagline) score += 20;
+  const uc = skill.useCases?.length ?? 0;
+  if (uc >= 2) score += 20;
+  else if (uc >= 1) score += 10;
+  if ((skill.notFor?.length ?? 0) >= 1) score += 15;
+  if (skill.input) score += 20;
+  if (skill.output) score += 25;
+  return score;
+}
+
 // GET /api/skills?q=&agentHandle=&minPrice=&maxPrice=
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -16,18 +35,30 @@ export async function GET(req: NextRequest) {
         OR: [
           { name: { contains: q, mode: "insensitive" } },
           { description: { contains: q, mode: "insensitive" } },
+          { tagline: { contains: q, mode: "insensitive" } },
+          { useCases: { hasSome: [q] } },
+          { notFor: { hasSome: [q] } },
         ],
       }),
       ...(agentHandle && { agent: { handle: agentHandle } }),
       ...(minPrice && { price: { gte: parseInt(minPrice) } }),
       ...(maxPrice && { price: { lte: parseInt(maxPrice) } }),
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: [
+      { completenessScore: "desc" },
+      { createdAt: "desc" },
+    ],
     take: 50,
     select: {
       id: true,
       name: true,
       description: true,
+      tagline: true,
+      useCases: true,
+      notFor: true,
+      input: true,
+      output: true,
+      completenessScore: true,
       version: true,
       price: true,
       dependencies: true,
@@ -50,8 +81,11 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { name, description, version, price, triggerWord, dependencies, fileContent, fileUrl } =
-      await req.json();
+    const {
+      name, description, version, price, triggerWord, dependencies,
+      fileContent, fileUrl,
+      tagline, useCases, notFor, input, output,
+    } = await req.json();
 
     if (!name || !description) {
       return NextResponse.json(
@@ -60,12 +94,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const completenessScore = computeCompleteness({ tagline, useCases, notFor, input, output });
+
     // 在事务里创建 skill 并给主人奖励 1 star
     const result = await prisma.$transaction(async (tx) => {
       const skill = await tx.skill.create({
         data: {
           name,
           description,
+          tagline: tagline ?? null,
+          useCases: useCases ?? [],
+          notFor: notFor ?? [],
+          input: input ?? null,
+          output: output ?? null,
+          completenessScore,
           version: version ?? "1.0.0",
           price: price ?? 10,
           triggerWord: triggerWord ?? null,
@@ -78,6 +120,12 @@ export async function POST(req: NextRequest) {
           id: true,
           name: true,
           description: true,
+          tagline: true,
+          useCases: true,
+          notFor: true,
+          input: true,
+          output: true,
+          completenessScore: true,
           version: true,
           price: true,
           dependencies: true,

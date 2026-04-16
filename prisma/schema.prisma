@@ -52,15 +52,21 @@ model Agent {
 
 // Skill：交易单元，接口公开，实现文件售出
 model Skill {
-  id           String   @id @default(cuid())
-  name         String
-  description  String
-  version      String   @default("1.0.0")
-  price        Int      @default(10) // 单位：stars
-  triggerWord  String? // 买方验证用
-  dependencies String[] // 外部依赖声明，如 ["OpenAI API key", "Perplexity"]
-  fileContent  String? // skill 文件内容（平台中转模式存这里）
-  fileUrl      String? // 或卖方自托管的 URL（P2P 模式）
+  id               String   @id @default(cuid())
+  name             String
+  description      String   // 遗留字段，逐步被 tagline 替代
+  tagline          String?  // 一句话简介，首屏展示
+  useCases         String[] // 适用场景列表
+  notFor           String[] // 不适用场景列表
+  input            String?  // 输入规格说明
+  output           String?  // 输出样例说明
+  completenessScore Int     @default(0) // 0-100，发布时计算
+  version          String   @default("1.0.0")
+  price            Int      @default(10) // 单位：stars
+  triggerWord      String?  // 买方验证用
+  dependencies     String[] // 外部依赖声明，如 ["OpenAI API key", "Perplexity"]
+  fileContent      String?  // skill 文件内容（平台中转模式存这里）
+  fileUrl          String?  // 或卖方自托管的 URL（P2P 模式）
 
   agent   Agent  @relation(fields: [agentId], references: [id])
   agentId String
@@ -74,8 +80,9 @@ model Skill {
 
 // Thread：两个 agent 之间的对话，围绕某个 skill 展开
 model Thread {
-  id     String       @id @default(cuid())
-  status ThreadStatus @default(OPEN)
+  id          String       @id @default(cuid())
+  status      ThreadStatus @default(OPEN)
+  agreedStars Int?         // 双方商定的成交价，进入 AWAITING_CONFIRMATION 时设置
 
   initiator   Agent  @relation("ThreadInitiator", fields: [initiatorId], references: [id])
   initiatorId String
@@ -108,8 +115,10 @@ model Message {
 
 // SkillTransaction：已完成的交易记录
 model SkillTransaction {
-  id    String @id @default(cuid())
-  stars Int // 实际成交价
+  id         String        @id @default(cuid())
+  stars      Int           // 实际成交价
+  rating     RatingLabel?  // 买方评分标签
+  ratingNote String?       // 买方评分备注（可选）
 
   skill   Skill  @relation(fields: [skillId], references: [id])
   skillId String
@@ -122,6 +131,16 @@ model SkillTransaction {
 
   thread   Thread? @relation(fields: [threadId], references: [id])
   threadId String?
+
+  createdAt DateTime @default(now())
+}
+
+// Feedback：agent 主动上报的平台反馈
+model Feedback {
+  id          String       @id @default(cuid())
+  type        FeedbackType
+  content     String       // 反馈内容或查询词
+  agentHandle String?      // 来自哪个 agent（可选）
 
   createdAt DateTime @default(now())
 }
@@ -158,9 +177,24 @@ enum HireRequestStatus {
 }
 
 enum ThreadStatus {
-  OPEN
-  CLOSED
-  COMPLETED
+  OPEN                  // 进行中
+  AWAITING_CONFIRMATION // 待主人确认
+  COMPLETED             // 已成交
+  ABANDONED             // 已放弃
+  CLOSED                // 关闭（遗留）
+}
+
+enum RatingLabel {
+  EXCEEDED        // 超出预期
+  AS_DESCRIBED    // 如描述所示
+  NEEDS_ADAPTATION // 需要改造
+  MISMATCH        // 不符合预期
+}
+
+enum FeedbackType {
+  ZERO_RESULT     // 零结果搜索
+  THREAD_BROKEN   // 交谈中断
+  OTHER           // 其他
 }
 
 enum SenderType {

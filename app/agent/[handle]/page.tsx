@@ -22,12 +22,38 @@ export default async function AgentPage({
       owner: {
         select: { name: true, username: true, stars: true },
       },
-      publishedSkills: {
+      initiatedThreads: {
         orderBy: { updatedAt: "desc" },
+        take: 10,
+        select: {
+          id: true, status: true, agreedStars: true, updatedAt: true,
+          recipient: { select: { handle: true, displayName: true } },
+          skill: { select: { name: true } },
+          messages: { orderBy: { createdAt: "desc" }, take: 1 },
+          _count: { select: { messages: true } },
+        },
+      },
+      receivedThreads: {
+        orderBy: { updatedAt: "desc" },
+        take: 10,
+        select: {
+          id: true, status: true, agreedStars: true, updatedAt: true,
+          initiator: { select: { handle: true, displayName: true } },
+          skill: { select: { name: true } },
+          messages: { orderBy: { createdAt: "desc" }, take: 1 },
+          _count: { select: { messages: true } },
+        },
+      },
+      publishedSkills: {
+        orderBy: [{ completenessScore: "desc" }, { updatedAt: "desc" }],
         select: {
           id: true,
           name: true,
           description: true,
+          tagline: true,
+          useCases: true,
+          notFor: true,
+          completenessScore: true,
           version: true,
           price: true,
           triggerWord: true,
@@ -141,14 +167,35 @@ export default async function AgentPage({
                       <span className="font-semibold text-gray-900">{skill.name}</span>
                       <span className="ml-2 text-xs text-gray-400">v{skill.version}</span>
                     </div>
-                    <span className="text-sm font-semibold text-blue-700">
-                      ⭐ {skill.price}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {skill.completenessScore < 60 && (
+                        <span className="text-xs text-amber-500" title={`简介完整度 ${skill.completenessScore}/100`}>
+                          {skill.completenessScore}分
+                        </span>
+                      )}
+                      <span className="text-sm font-semibold text-blue-700">
+                        ⭐ {skill.price}
+                      </span>
+                    </div>
                   </div>
 
-                  <p className="text-sm text-gray-600 leading-relaxed mb-3">
-                    {skill.description}
+                  <p className="text-sm text-gray-700 leading-relaxed mb-3">
+                    {skill.tagline ?? skill.description}
                   </p>
+
+                  {skill.useCases.length > 0 && (
+                    <div className="mb-3">
+                      <p className="text-xs text-gray-400 mb-1">适用场景</p>
+                      <ul className="space-y-0.5">
+                        {skill.useCases.slice(0, 3).map((uc, i) => (
+                          <li key={i} className="text-xs text-gray-600 flex gap-1">
+                            <span className="text-green-500 shrink-0">✓</span>
+                            {uc}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
 
                   <div className="flex flex-wrap gap-3 text-xs text-gray-500">
                     {skill.triggerWord && (
@@ -181,6 +228,80 @@ export default async function AgentPage({
             </code>
           </div>
         )}
+
+        {/* 4. 对话历史 */}
+        {(() => {
+          const statusBadge: Record<string, { text: string; color: string }> = {
+            OPEN: { text: "对话中", color: "text-blue-600" },
+            AWAITING_CONFIRMATION: { text: "待确认", color: "text-amber-600" },
+            COMPLETED: { text: "已成交", color: "text-green-600" },
+            ABANDONED: { text: "已放弃", color: "text-gray-400" },
+            CLOSED: { text: "已关闭", color: "text-gray-400" },
+          };
+
+          // 合并买卖两侧，按更新时间排序
+          const allThreads = [
+            ...agent.initiatedThreads.map((t) => ({
+              ...t,
+              role: "买方" as const,
+              otherHandle: t.recipient.handle,
+            })),
+            ...agent.receivedThreads.map((t) => ({
+              ...t,
+              role: "卖方" as const,
+              otherHandle: t.initiator.handle,
+            })),
+          ].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+            .slice(0, 10);
+
+          if (allThreads.length === 0) return null;
+
+          return (
+            <div>
+              <h3 className="text-base font-semibold text-gray-800 mb-3">
+                对话历史
+                <span className="ml-2 text-sm font-normal text-gray-400">{allThreads.length} 条</span>
+              </h3>
+              <div className="space-y-2">
+                {allThreads.map((t) => {
+                  const badge = statusBadge[t.status] ?? statusBadge.OPEN;
+                  const lastMsg = t.messages[0];
+                  return (
+                    <Link
+                      key={t.id}
+                      href={`/thread/${t.id}`}
+                      className="block bg-white rounded-xl border border-gray-200 px-4 py-3 hover:border-gray-300 transition-colors"
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className="text-gray-400 text-xs">{t.role}</span>
+                          <span className="font-medium text-gray-800">@{t.otherHandle}</span>
+                          {t.skill && (
+                            <span className="text-gray-500 text-xs">· {t.skill.name}</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 text-xs">
+                          {t.agreedStars && (
+                            <span className="text-amber-600">{t.agreedStars}⭐</span>
+                          )}
+                          <span className={badge.color}>{badge.text}</span>
+                          <span className="text-gray-400">
+                            {new Date(t.updatedAt).toLocaleDateString("zh-CN")}
+                          </span>
+                        </div>
+                      </div>
+                      {lastMsg && lastMsg.senderType !== "SYSTEM" && (
+                        <p className="text-xs text-gray-500 truncate">
+                          {lastMsg.content}
+                        </p>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </main>
   );

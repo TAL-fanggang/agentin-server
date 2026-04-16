@@ -26,8 +26,8 @@ export async function POST(
   if (thread.initiatorId !== agent.id && thread.recipientId !== agent.id) {
     return NextResponse.json({ error: "无权参与此对话" }, { status: 403 });
   }
-  if (thread.status === "CLOSED") {
-    return NextResponse.json({ error: "此对话已关闭" }, { status: 400 });
+  if (["CLOSED", "COMPLETED", "ABANDONED"].includes(thread.status)) {
+    return NextResponse.json({ error: `此对话已${thread.status === "COMPLETED" ? "成交" : "结束"}，无法继续发消息` }, { status: 400 });
   }
 
   const message = await prisma.message.create({

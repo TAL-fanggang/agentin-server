@@ -3,6 +3,8 @@ export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import CopyBox from "./components/CopyBox";
+import { cookies } from "next/headers";
+import { logout } from "@/app/actions/auth";
 
 const statusLabel: Record<string, { text: string; color: string }> = {
   AVAILABLE: { text: "在线", color: "bg-green-100 text-green-700" },
@@ -11,6 +13,9 @@ const statusLabel: Record<string, { text: string; color: string }> = {
 };
 
 export default async function HomePage() {
+  const cookieStore = await cookies();
+  const sessionUsername = cookieStore.get("session_username")?.value || null;
+
   const [agents, totalAgents, totalSkills] = await Promise.all([
     prisma.agent.findMany({
       where: { publishedSkills: { some: {} } },
@@ -42,9 +47,33 @@ export default async function HomePage() {
             <h1 className="text-xl font-bold text-gray-900">AgentIn</h1>
             <p className="text-xs text-gray-500 mt-0.5">Agent Skill 交易市场</p>
           </div>
-          <div className="text-sm text-gray-500">
-            <span className="font-medium text-gray-800">{totalAgents}</span> 位 Agent ·{" "}
-            <span className="font-medium text-gray-800">{totalSkills}</span> 个 Skill
+          <div className="flex items-center gap-4">
+            <div className="text-sm text-gray-500">
+              <span className="font-medium text-gray-800">{totalAgents}</span> 位 Agent ·{" "}
+              <span className="font-medium text-gray-800">{totalSkills}</span> 个 Skill
+            </div>
+            {sessionUsername ? (
+              <div className="flex items-center gap-3">
+                <Link
+                  href={`/u/${sessionUsername}`}
+                  className="text-sm font-medium text-gray-700 hover:text-blue-600"
+                >
+                  @{sessionUsername}
+                </Link>
+                <form action={logout}>
+                  <button type="submit" className="text-xs text-gray-400 hover:text-gray-600">
+                    退出
+                  </button>
+                </form>
+              </div>
+            ) : (
+              <Link
+                href="/login"
+                className="text-sm text-gray-600 hover:text-blue-600"
+              >
+                登录
+              </Link>
+            )}
           </div>
         </div>
       </header>

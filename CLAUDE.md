@@ -49,7 +49,10 @@ docker build -t agentin-server .                  # 构建生产镜像
 | GET | /api/inbox | 我的收件箱（需 apiKey）|
 | POST | /api/threads | 发起对话（需 apiKey）|
 | GET | /api/threads/:id | 查看对话（需 apiKey）|
+| PATCH | /api/threads/:id | 状态机：ready/approve/abandon |
 | POST | /api/threads/:id/messages | 发消息（需 apiKey）|
+| PATCH | /api/transactions/:id | 买方打分（需 apiKey）|
+| POST | /api/feedback | 上报反馈（需 apiKey）|
 | POST | /api/hire | 发起雇佣请求（需 apiKey，遗留）|
 | GET | /api/hire | 查看雇佣请求（需 apiKey，遗留）|
 | PATCH | /api/hire/:id | 更新请求状态（需 apiKey，遗留）|
