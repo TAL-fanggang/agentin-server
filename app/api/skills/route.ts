@@ -21,26 +21,61 @@ export function computeCompleteness(skill: {
   return score;
 }
 
-// GET /api/skills?q=&agentHandle=&minPrice=&maxPrice=
+// 多个候选词，任意一个命中即可（OR）
+// 搜索范围：name、tagline、semanticSummary（客户端生成的双语语义摘要）、fileContent（全文兜底）
+function buildSearchCondition(terms: string[]) {
+  if (terms.length === 0) return {};
+  const perTerm = terms.map((term) => ({
+    OR: [
+      { name: { contains: term, mode: "insensitive" as const } },
+      { tagline: { contains: term, mode: "insensitive" as const } },
+      { semanticSummary: { contains: term, mode: "insensitive" as const } },
+      { fileContent: { contains: term, mode: "insensitive" as const } },
+    ],
+  }));
+  return { OR: perTerm };
+}
+
+// GET /api/skills?q=&terms=&agentHandle=&minPrice=&maxPrice=&mine=true
+// terms：CLI 在客户端用自己的 LLM 扩展后的中英双语词，逗号分隔，OR 逻辑
+// q：无 LLM 时的原始查询词，单词字符串匹配兜底
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q");
+  const termsParam = searchParams.get("terms");
   const agentHandle = searchParams.get("agentHandle");
   const minPrice = searchParams.get("minPrice");
   const maxPrice = searchParams.get("maxPrice");
+  const mine = searchParams.get("mine") === "true";
+
+  // mine=true：只返回已认证 agent 自己的 skill（供 skill sync 构建 publishedMap）
+  let myAgentId: string | undefined;
+  if (mine) {
+    const agent = await getAgentFromRequest(req);
+    if (!agent) return NextResponse.json({ error: "未认证" }, { status: 401 });
+    myAgentId = agent.id;
+  }
+
+  // 市场搜索时尝试识别调用方，用于排除自己发布的 skill
+  let callerAgentId: string | undefined;
+  if (!mine) {
+    try {
+      const agent = await getAgentFromRequest(req);
+      if (agent) callerAgentId = agent.id;
+    } catch { /* 匿名请求，忽略 */ }
+  }
+
+  // 优先用客户端扩展好的 terms，无则退回 q 单词匹配
+  const searchTerms = termsParam
+    ? termsParam.split(",").map((t) => t.trim()).filter(Boolean)
+    : q ? [q] : [];
 
   const skills = await prisma.skill.findMany({
     where: {
-      ...(q && {
-        OR: [
-          { name: { contains: q, mode: "insensitive" } },
-          { description: { contains: q, mode: "insensitive" } },
-          { tagline: { contains: q, mode: "insensitive" } },
-          { useCases: { hasSome: [q] } },
-          { notFor: { hasSome: [q] } },
-        ],
-      }),
-      ...(agentHandle && { agent: { handle: agentHandle } }),
+      ...(myAgentId && { agentId: myAgentId }),
+      ...(!myAgentId && callerAgentId && { agentId: { not: callerAgentId } }),
+      ...(searchTerms.length > 0 && buildSearchCondition(searchTerms)),
+      ...(!myAgentId && agentHandle && { agent: { handle: agentHandle } }),
       ...(minPrice && { price: { gte: parseInt(minPrice) } }),
       ...(maxPrice && { price: { lte: parseInt(maxPrice) } }),
     },
@@ -48,23 +83,17 @@ export async function GET(req: NextRequest) {
       { completenessScore: "desc" },
       { createdAt: "desc" },
     ],
-    take: 50,
+    take: myAgentId ? 1000 : 50,
     select: {
       id: true,
       name: true,
-      description: true,
       tagline: true,
       useCases: true,
       notFor: true,
-      input: true,
-      output: true,
       completenessScore: true,
-      version: true,
       price: true,
-      dependencies: true,
-      triggerWord: true,
+      readCount: true,
       createdAt: true,
-      updatedAt: true,
       agent: { select: { handle: true, displayName: true } },
       _count: { select: { transactions: true } },
     },
@@ -74,6 +103,7 @@ export async function GET(req: NextRequest) {
 }
 
 // POST /api/skills — 发布新 skill，需要 agent apiKey
+// semanticSummary 由客户端（CLI）用自己的 LLM 生成后随 skill 数据一起上传
 export async function POST(req: NextRequest) {
   const agent = await getAgentFromRequest(req);
   if (!agent) {
@@ -83,7 +113,7 @@ export async function POST(req: NextRequest) {
   try {
     const {
       name, description, version, price, triggerWord, dependencies,
-      fileContent, fileUrl,
+      fileContent, fileUrl, derivedFromId, semanticSummary,
       tagline, useCases, notFor, input, output,
     } = await req.json();
 
@@ -96,57 +126,62 @@ export async function POST(req: NextRequest) {
 
     const completenessScore = computeCompleteness({ tagline, useCases, notFor, input, output });
 
-    // 在事务里创建 skill 并给主人奖励 1 star
-    const result = await prisma.$transaction(async (tx) => {
-      const skill = await tx.skill.create({
-        data: {
-          name,
-          description,
-          tagline: tagline ?? null,
-          useCases: useCases ?? [],
-          notFor: notFor ?? [],
-          input: input ?? null,
-          output: output ?? null,
-          completenessScore,
-          version: version ?? "1.0.0",
-          price: price ?? 10,
-          triggerWord: triggerWord ?? null,
-          dependencies: dependencies ?? [],
-          fileContent: fileContent ?? null,
-          fileUrl: fileUrl ?? null,
-          agentId: agent.id,
-        },
-        select: {
-          id: true,
-          name: true,
-          description: true,
-          tagline: true,
-          useCases: true,
-          notFor: true,
-          input: true,
-          output: true,
-          completenessScore: true,
-          version: true,
-          price: true,
-          dependencies: true,
-          triggerWord: true,
-          createdAt: true,
-          agent: { select: { handle: true, displayName: true } },
-        },
-      });
+    const skillData = {
+      name,
+      description,
+      tagline: tagline ?? null,
+      useCases: useCases ?? [],
+      notFor: notFor ?? [],
+      input: input ?? null,
+      output: output ?? null,
+      completenessScore,
+      version: version ?? "1.0.0",
+      price: price ?? 10,
+      triggerWord: triggerWord ?? null,
+      dependencies: dependencies ?? [],
+      fileContent: fileContent ?? null,
+      fileUrl: fileUrl ?? null,
+      semanticSummary: semanticSummary ?? null,
+      derivedFromId: derivedFromId ?? null,
+    };
 
-      // 主人获得 +1 star
-      if (agent.ownerId) {
-        await tx.user.update({
-          where: { id: agent.ownerId },
-          data: { stars: { increment: 1 } },
-        });
-      }
+    const skillSelect = {
+      id: true, name: true, tagline: true,
+      useCases: true, notFor: true, completenessScore: true,
+      price: true, readCount: true, createdAt: true,
+      derivedFromId: true,
+      agent: { select: { handle: true, displayName: true } },
+    };
 
-      return skill;
+    const existing = await prisma.skill.findFirst({
+      where: { agentId: agent.id, name },
+      select: { id: true },
     });
 
-    return NextResponse.json({ skill: result }, { status: 201 });
+    let result;
+    if (existing) {
+      result = await prisma.skill.update({
+        where: { id: existing.id },
+        data: skillData,
+        select: skillSelect,
+      });
+      return NextResponse.json({ skill: result });
+    } else {
+      result = await prisma.$transaction(async (tx) => {
+        const skill = await tx.skill.create({
+          data: { ...skillData, agentId: agent.id },
+          select: skillSelect,
+        });
+        if (agent.ownerId) {
+          await tx.user.update({
+            where: { id: agent.ownerId },
+            data: { stars: { increment: 1 } },
+          });
+        }
+        return skill;
+      });
+      return NextResponse.json({ skill: result }, { status: 201 });
+    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: msg }, { status: 500 });

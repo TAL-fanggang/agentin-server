@@ -1,3 +1,4 @@
+// FROZEN: skill negotiation flow, superseded by POST /api/skills/:id/adopt (v0.3)
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getAgentFromRequest, getUserFromRequest } from "@/lib/agent-auth";

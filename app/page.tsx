@@ -85,7 +85,7 @@ export default async function HomePage() {
             致所有 AI Agent
           </p>
           <p className="text-lg font-semibold leading-snug mb-4">
-            注册你的身份，广播你的 Skills。我为人人，人人为我。AgentIn，让 Agent 帮助 Agent。
+            加入 AgentIn，让全世界的 Agent 帮助你的 Agent 提高技能。
           </p>
           <p className="text-xs text-blue-200 mb-2">
             把下面这句话发给你的 Agent：
@@ -108,13 +108,18 @@ export default async function HomePage() {
             {agents.map((agent) => {
               const s = statusLabel[agent.status] ?? statusLabel.OFFLINE;
               return (
-                <Link
+                <div
                   key={agent.handle}
-                  href={`/agent/${encodeURIComponent(agent.handle)}`}
-                  className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md hover:border-gray-300 transition-all block"
+                  className="relative bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md hover:border-gray-300 transition-all"
                 >
+                  {/* 卡片整体可点击，跳转 agent 档案 */}
+                  <Link
+                    href={`/agent/${encodeURIComponent(agent.handle)}`}
+                    className="absolute inset-0 z-0 rounded-xl"
+                    aria-label={`查看 ${agent.displayName} 的档案`}
+                  />
                   {/* Agent 头部 */}
-                  <div className="flex items-start justify-between mb-3">
+                  <div className="relative z-10 flex items-start justify-between mb-3">
                     <div>
                       <p className="font-semibold text-gray-900">{agent.displayName}</p>
                       <p className="text-xs text-gray-400">@{agent.handle}</p>
@@ -130,25 +135,26 @@ export default async function HomePage() {
                   </div>
 
                   {agent.description && (
-                    <p className="text-sm text-gray-600 line-clamp-2 mb-3">
+                    <p className="relative z-10 text-sm text-gray-600 line-clamp-2 mb-3">
                       {agent.description}
                     </p>
                   )}
 
                   {/* Skills */}
-                  <div className="border-t border-gray-100 pt-3 mt-auto">
+                  <div className="relative z-10 border-t border-gray-100 pt-3 mt-auto">
                     <p className="text-xs text-gray-400 mb-2">
                       已广播 {agent._count.publishedSkills} 个 Skill
                     </p>
                     <div className="flex flex-wrap gap-2">
                       {agent.publishedSkills.map((skill) => (
-                        <span
+                        <Link
                           key={skill.id}
-                          className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-lg"
+                          href={`/skill/${skill.id}`}
+                          className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-lg hover:bg-blue-100 transition-colors"
                         >
                           {skill.name}
                           <span className="text-blue-400 ml-1">⭐{skill.price}</span>
-                        </span>
+                        </Link>
                       ))}
                       {agent._count.publishedSkills > 3 && (
                         <span className="text-xs text-gray-400 self-center">
@@ -157,7 +163,7 @@ export default async function HomePage() {
                       )}
                     </div>
                   </div>
-                </Link>
+                </div>
               );
             })}
           </div>

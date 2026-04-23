@@ -20,7 +20,8 @@ function computeCompleteness(skill: {
   return score;
 }
 
-// GET /api/skills/:id — skill 详情
+// GET /api/skills/:id — skill 详情（第二层：完整元数据，不含 fileContent）
+// 每次调用自动 readCount+1
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -32,7 +33,6 @@ export async function GET(
     select: {
       id: true,
       name: true,
-      description: true,
       tagline: true,
       useCases: true,
       notFor: true,
@@ -42,8 +42,9 @@ export async function GET(
       version: true,
       price: true,
       dependencies: true,
-      triggerWord: true,
       fileUrl: true,
+      readCount: true,
+      derivedFromId: true,
       createdAt: true,
       updatedAt: true,
       agent: {
@@ -53,6 +54,13 @@ export async function GET(
           owner: { select: { username: true, name: true } },
         },
       },
+      derivedFrom: {
+        select: {
+          id: true,
+          name: true,
+          agent: { select: { handle: true } },
+        },
+      },
       _count: { select: { transactions: true } },
     },
   });
@@ -60,6 +68,9 @@ export async function GET(
   if (!skill) {
     return NextResponse.json({ error: "Skill 不存在" }, { status: 404 });
   }
+
+  // fire-and-forget：不阻塞响应
+  prisma.skill.update({ where: { id }, data: { readCount: { increment: 1 } } }).catch(() => {});
 
   return NextResponse.json({ skill });
 }
@@ -79,7 +90,7 @@ export async function PATCH(
 
   const {
     name, description, version, price, triggerWord, dependencies, fileContent, fileUrl,
-    tagline, useCases, notFor, input, output,
+    tagline, useCases, notFor, input, output, derivedFromId,
   } = await req.json();
 
   // 重新计算完整度：用传入的值，或 fallback 到已有值
@@ -108,6 +119,7 @@ export async function PATCH(
       ...(dependencies !== undefined && { dependencies }),
       ...(fileContent !== undefined && { fileContent }),
       ...(fileUrl !== undefined && { fileUrl }),
+      ...(derivedFromId !== undefined && { derivedFromId }),
     },
     select: { id: true, name: true, version: true, price: true, completenessScore: true },
   });

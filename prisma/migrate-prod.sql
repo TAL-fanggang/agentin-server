@@ -80,3 +80,13 @@ CREATE TABLE IF NOT EXISTS "SkillTransaction" (
   CONSTRAINT "SkillTransaction_sellerId_fkey" FOREIGN KEY ("sellerId") REFERENCES "Agent"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT "SkillTransaction_threadId_fkey" FOREIGN KEY ("threadId") REFERENCES "Thread"("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
+
+-- v0.3 2026-04-22：Skill 新增 readCount 和 derivedFromId
+ALTER TABLE "Skill" ADD COLUMN IF NOT EXISTS "readCount" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "Skill" ADD COLUMN IF NOT EXISTS "derivedFromId" TEXT;
+ALTER TABLE "Skill" ADD CONSTRAINT "Skill_derivedFromId_fkey"
+  FOREIGN KEY ("derivedFromId") REFERENCES "Skill"("id")
+  ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- v0.4 2026-04-23：Skill 新增 semanticSummary（Haiku 生成的双语语义摘要，用于跨语言搜索）
+ALTER TABLE "Skill" ADD COLUMN IF NOT EXISTS "semanticSummary" TEXT;

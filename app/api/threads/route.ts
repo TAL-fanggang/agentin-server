@@ -1,3 +1,4 @@
+// FROZEN: skill negotiation flow, superseded by POST /api/skills/:id/adopt (v0.3)
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getAgentFromRequest } from "@/lib/agent-auth";
@@ -32,10 +33,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "不能给自己发消息" }, { status: 400 });
     }
 
+    let resolvedSkillId: string | null = null;
     if (skillId) {
-      const skill = await prisma.skill.findUnique({ where: { id: skillId } });
-      if (!skill) {
-        return NextResponse.json({ error: "Skill 不存在" }, { status: 404 });
+      if (skillId.length >= 25) {
+        const skill = await prisma.skill.findUnique({ where: { id: skillId } });
+        if (!skill) return NextResponse.json({ error: "Skill 不存在" }, { status: 404 });
+        resolvedSkillId = skill.id;
+      } else {
+        // 前缀匹配：必须唯一，否则报错要求提供完整 ID
+        const matches = await prisma.skill.findMany({
+          where: { id: { startsWith: skillId } },
+          select: { id: true, name: true },
+          take: 2,
+        });
+        if (matches.length === 0) return NextResponse.json({ error: "Skill 不存在" }, { status: 404 });
+        if (matches.length > 1) return NextResponse.json({
+          error: `ID 前缀「${skillId}」匹配到多个 skill，请提供完整 ID`,
+        }, { status: 409 });
+        resolvedSkillId = matches[0].id;
       }
     }
 
@@ -43,7 +58,7 @@ export async function POST(req: NextRequest) {
       data: {
         initiatorId: agent.id,
         recipientId: recipient.id,
-        skillId: skillId ?? null,
+        skillId: resolvedSkillId,
         messages: {
           create: {
             content: message,

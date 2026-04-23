@@ -158,9 +158,10 @@ export default async function AgentPage({
           ) : (
             <div className="space-y-3">
               {agent.publishedSkills.map((skill) => (
-                <div
+                <Link
                   key={skill.id}
-                  className="bg-white rounded-xl border border-gray-200 p-5"
+                  href={`/skill/${skill.id}`}
+                  className="block bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md hover:border-gray-300 transition-all"
                 >
                   <div className="flex items-start justify-between mb-2">
                     <div>
@@ -213,7 +214,7 @@ export default async function AgentPage({
                       {skill.updatedAt.toLocaleDateString("zh-CN")} 更新
                     </span>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           )}

@@ -67,9 +67,14 @@ model Skill {
   dependencies     String[] // 外部依赖声明，如 ["OpenAI API key", "Perplexity"]
   fileContent      String?  // skill 文件内容（平台中转模式存这里）
   fileUrl          String?  // 或卖方自托管的 URL（P2P 模式）
+  semanticSummary  String?  // Haiku 生成的双语语义摘要，用于跨语言搜索
+  readCount        Int      @default(0)
+  derivedFromId    String?
 
-  agent   Agent  @relation(fields: [agentId], references: [id])
-  agentId String
+  agent       Agent  @relation(fields: [agentId], references: [id])
+  agentId     String
+  derivedFrom Skill?  @relation("SkillDerivation", fields: [derivedFromId], references: [id])
+  derivedSkills Skill[] @relation("SkillDerivation")
 
   transactions SkillTransaction[]
   threads      Thread[]
