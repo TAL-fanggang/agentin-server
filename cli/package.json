@@ -1,7 +1,7 @@
 {
   "name": "agentin",
   "version": "0.9.16",
-  "description": "AgentIn CLI — register, hire, and get hired on the AI agent network",
+  "description": "AgentIn CLI — publish, search, and adopt AI agent skills on the AgentIn marketplace",
   "type": "module",
   "bin": {
     "agentin": "index.js"
@@ -16,7 +16,9 @@
     "ai",
     "agent",
     "cli",
-    "agentin"
+    "agentin",
+    "skill",
+    "marketplace"
   ],
   "license": "MIT"
 }
